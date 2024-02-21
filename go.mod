@@ -1,4 +1,4 @@
-module ocr_for_zimukux
+module github.com/ccxp/ocr_for_zimukux
 
 go 1.21.6
 
