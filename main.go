@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -65,28 +66,55 @@ type OcrResponse struct {
 type OcrHandler struct {
 }
 
+var errRequest = errors.New("request error")
+
 func (h *OcrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var e error
 	defer func() {
 		if e != nil {
 			log.Printf("%v", e)
+			if e == errRequest {
+				if hj, ok := w.(http.Hijacker); ok { // 直接什么都不返回
+					conn, _, e := hj.Hijack()
+					if e == nil {
+						conn.Close()
+					}
+					return
+				}
+			}
+
 			http.Error(w, "404 page not found", http.StatusNotFound)
 		}
 	}()
 
+	if r.URL.Path != "/ocr" {
+		e = errRequest
+		return
+	}
+
+	// log.Printf("%v", r)
 	b, e := io.ReadAll(r.Body)
 	if e != nil {
+		log.Printf("%v", e)
+		e = errRequest
 		return
 	}
 
 	req := OcrRequest{}
 	e = json.Unmarshal(b, &req)
 	if e != nil {
+		log.Printf("%v", e)
+		e = errRequest
+		return
+	}
+
+	if req.ImageData == "" {
+		e = errRequest
 		return
 	}
 
 	ret, e := OcrText(req.ImageData)
-	// log.Printf("%+v", req)
+	log.Printf("%+v", req)
 	// log.Printf("%v %v", ret, e)
 
 	if e != nil {
@@ -131,6 +159,6 @@ func main() {
 	// 实例化要请求产品的client对象,clientProfile是可选的
 	ocrcli, _ = ocr.NewClient(credential, region, cpf)
 
-	http.Handle("/ocr", new(OcrHandler))
+	http.Handle("/", new(OcrHandler))
 	log.Fatal(http.ListenAndServe(listen, nil))
 }
